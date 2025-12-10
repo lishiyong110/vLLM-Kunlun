@@ -9,7 +9,7 @@
 ---
 
 ## Latest News🔥
-- [2025/12/03] Initial release of vLLM Kunlun
+- [2025/12] Initial release of vLLM Kunlun
 
 ---
 
