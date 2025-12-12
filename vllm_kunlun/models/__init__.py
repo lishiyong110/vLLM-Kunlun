@@ -63,6 +63,10 @@ def register_model():
         "Glm4vForConditionalGeneration",
         "vllm_kunlun.models.glm4_1v:Glm4vForConditionalGeneration")
 
+    ModelRegistry.register_model(
+        "Glm4vMoeForConditionalGeneration",
+        "vllm_kunlun.models.glm4_1v:Glm4vMoeForConditionalGeneration")
+
 
 def register_quant_method():
     """to do"""

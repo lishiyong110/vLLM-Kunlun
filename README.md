@@ -180,6 +180,14 @@ By utilizing the vLLM Kunlun plugin, popular open-source models, including Trans
       <td></td>
       <td><span class="status-coming">coming soon</span></td>
     </tr>
+    <tr>
+      <td class="model-name">GLM-4.5V</td>
+      <td class="status-support">✅</td>
+      <td></td>
+      <td></td>
+      <td class="status-support">✅</td>
+      <td></td>
+    </tr>
   </tbody>
 </table>
 

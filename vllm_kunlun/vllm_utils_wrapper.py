@@ -114,7 +114,10 @@ def vllm_kunlun_weak_ref_tensor(tensor: Any) -> Any:
     but will not keep the original tensor alive.
     """
     # return tensor
-    return torch.ops._kunlun.weak_ref_tensor(tensor)
+    if isinstance(tensor, torch.Tensor):
+        return torch.ops._kunlun.weak_ref_tensor(tensor)
+    else:
+        return tensor
 
 def vllm_kunlun_weak_ref_tensors(
     tensors: Union[torch.Tensor, list[torch.Tensor], tuple[torch.Tensor]]
@@ -603,6 +606,107 @@ def _fake_moe_softmax_topk(
 
 moe_softmax_topk.register_fake(_fake_moe_softmax_topk)
 
+@custom_op("_C::moe_softmax_topk_norm", mutates_args=())
+def moe_softmax_topk_norm(
+    x: torch.Tensor,
+    normed_score: torch.Tensor,
+    topk_index: torch.Tensor,
+    block_statistic: torch.Tensor,
+    stable: bool = True
+) -> None:
+    xtorch_ops.moe_softmax_topk_norm(
+        x,
+        normed_score,
+        topk_index,
+        block_statistic,
+        stable
+    )
+
+@impl("_C::moe_softmax_topk_norm", "CUDA")
+def moe_softmax_topk_norm_cuda(
+    x: torch.Tensor,
+    normed_score: torch.Tensor,
+    topk_index: torch.Tensor,
+    block_statistic: torch.Tensor,
+    stable: bool = True
+) -> None:
+    xtorch_ops.moe_softmax_topk_norm(
+        x,
+        normed_score,
+        topk_index,
+        block_statistic,
+        stable
+    )
+
+def _fake_moe_softmax_topk_norm(
+    x: torch.Tensor,
+    normed_score: torch.Tensor,
+    topk_index: torch.Tensor,
+    block_statistic: torch.Tensor,
+    stable: bool = True
+) -> None:
+    return None
+
+moe_softmax_topk_norm.register_fake(_fake_moe_softmax_topk_norm)
+
+@custom_op("_C::moe_sigmoid_group_topk_norm", mutates_args=())
+def moe_sigmoid_group_topk_norm(
+    x: torch.Tensor,
+    topk_index: torch.Tensor,
+    norm_score: torch.Tensor,
+    block_static: torch.Tensor,
+    bias: torch.Tensor,
+    scale: float,
+    n_group: int,
+    topk_group: int
+) -> None:
+    xtorch_ops.moe_sigmoid_group_topk_norm(
+        x=x,
+        norm_score=norm_score,
+        topk_index=topk_index,
+        block_static=block_static,
+        bias=bias,
+        n_group=n_group,
+        topk_group=topk_group,
+        scale=scale,
+    )
+
+@impl("_C::moe_sigmoid_group_topk_norm", "CUDA")
+def moe_sigmoid_group_topk_norm_cuda(
+    x: torch.Tensor,
+    topk_index: torch.Tensor,
+    norm_score: torch.Tensor,
+    block_static: torch.Tensor,
+    bias: torch.Tensor,
+    scale: float,
+    n_group: int,
+    topk_group: int
+) -> None:
+    xtorch_ops.moe_sigmoid_group_topk_norm(
+        x=x,
+        norm_score=norm_score,
+        topk_index=topk_index,
+        block_static=block_static,
+        bias=bias,
+        n_group=n_group,
+        topk_group=topk_group,
+        scale=scale,
+    )
+
+def _fake_moe_sigmoid_group_topk_norm(
+    x: torch.Tensor,
+    topk_index: torch.Tensor,
+    norm_score: torch.Tensor,
+    block_static: torch.Tensor,
+    bias: torch.Tensor,
+    scale: float,
+    n_group: int,
+    topk_group: int
+) -> None:
+    return None
+
+moe_sigmoid_group_topk_norm.register_fake(_fake_moe_sigmoid_group_topk_norm)
+
 @custom_op("_C::moe_ffn_block", mutates_args=())
 def moe_ffn_block(
     out: torch.Tensor,
@@ -872,17 +976,17 @@ def moe_fc(
         sorted_tokens_idx: torch.Tensor,
         moe_topk: int,
         y: torch.Tensor,
-        act: torch.Tensor,
-        x_perchannel_max: torch.Tensor,
-        w_perchannel_max: torch.Tensor,
-        topk_ids: torch.Tensor,
-        topk_w: torch.Tensor,
-        bias: torch.Tensor,
-        tgemm_type: torch.Tensor,
-        tweight_type: torch.Tensor,
-        scale_n: int,
-        scale_k: int,
-        use_pack_int4: bool) -> None:
+        act: torch.Tensor=None,
+        x_perchannel_max: torch.Tensor=None,
+        w_perchannel_max: torch.Tensor=None,
+        topk_ids: torch.Tensor=None,
+        topk_w: torch.Tensor=None,
+        bias: torch.Tensor=None,
+        tgemm_type: torch.Tensor=None,
+        tweight_type: torch.Tensor=None,
+        scale_n: int=0,
+        scale_k: int=0,
+        use_pack_int4: bool=False) -> None:
 
     xtorch_ops.moe_fc(
         x, weight, sorted_tokens_num_lod, sorted_tokens_idx, moe_topk, y, act,
@@ -897,17 +1001,17 @@ def moe_fc_cuda(
         sorted_tokens_idx: torch.Tensor,
         moe_topk: int,
         y: torch.Tensor,
-        act: torch.Tensor,
-        x_perchannel_max: torch.Tensor,
-        w_perchannel_max: torch.Tensor,
-        topk_ids: torch.Tensor,
-        topk_w: torch.Tensor,
-        bias: torch.Tensor,
-        tgemm_type: torch.Tensor,
-        tweight_type: torch.Tensor,
-        scale_n: int,
-        scale_k: int,
-        use_pack_int4: bool) -> None:
+        act: torch.Tensor=None,
+        x_perchannel_max: torch.Tensor=None,
+        w_perchannel_max: torch.Tensor=None,
+        topk_ids: torch.Tensor=None,
+        topk_w: torch.Tensor=None,
+        bias: torch.Tensor=None,
+        tgemm_type: torch.Tensor=None,
+        tweight_type: torch.Tensor=None,
+        scale_n: int=0,
+        scale_k: int=0,
+        use_pack_int4: bool=False) -> None:
 
     xtorch_ops.moe_fc(
         x, weight, sorted_tokens_num_lod, sorted_tokens_idx, moe_topk, y, act,
@@ -921,18 +1025,20 @@ def _fake_moe_fc(
         sorted_tokens_idx: torch.Tensor,
         moe_topk: int,
         y: torch.Tensor,
-        act: torch.Tensor,
-        x_perchannel_max: torch.Tensor,
-        w_perchannel_max: torch.Tensor,
-        topk_ids: torch.Tensor,
-        topk_w: torch.Tensor,
-        bias: torch.Tensor,
-        tgemm_type: torch.Tensor,
-        tweight_type: torch.Tensor,
-        scale_n: int,
-        scale_k: int,
-        use_pack_int4: bool) -> None:
+        act: torch.Tensor=None,
+        x_perchannel_max: torch.Tensor=None,
+        w_perchannel_max: torch.Tensor=None,
+        topk_ids: torch.Tensor=None,
+        topk_w: torch.Tensor=None,
+        bias: torch.Tensor=None,
+        tgemm_type: torch.Tensor=None,
+        tweight_type: torch.Tensor=None,
+        scale_n: int=0,
+        scale_k: int=0,
+        use_pack_int4: bool=False) -> None:
     return None
+
+moe_fc.register_fake(_fake_moe_fc)
 
 
 ##################################################

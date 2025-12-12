@@ -84,6 +84,8 @@ class UnquantizedFusedMoEMethod(VllmUnquantizedFusedMoEMethod):
                             topk_group=topk_group,
                             num_expert_group=num_expert_group,
                             custom_routing_function=custom_routing_function,
+                            scoring_func=scoring_func,
+                            e_score_correction_bias=e_score_correction_bias,
                             linear_weights=linear_weights)
 
     def forward_kunlun(
@@ -97,7 +99,9 @@ class UnquantizedFusedMoEMethod(VllmUnquantizedFusedMoEMethod):
             renormalize: bool,
             topk_group: Optional[int] = None,
             num_expert_group: Optional[int] = None,
-            custom_routing_function: Optional[Callable] = None
+            custom_routing_function: Optional[Callable] = None,
+            scoring_func: str = "softmax",
+            e_score_correction_bias: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """forward_kunlun"""
         from vllm_kunlun.ops._kunlun_ops import KunlunOps as ops
@@ -126,8 +130,10 @@ class UnquantizedFusedMoEMethod(VllmUnquantizedFusedMoEMethod):
                              renormalize=renormalize,
                              inplace=True,
                              use_grouped_topk=use_grouped_topk,
-                             num_expert_group=num_expert_group,
-                             topk_group=topk_group
+                             expert_group_num=num_expert_group,
+                             topk_group=topk_group,
+                             scoring_func=scoring_func,
+                             e_score_correction_bias=e_score_correction_bias,
                              )
 
 class FusedMoE(VllmFusedMoE):
