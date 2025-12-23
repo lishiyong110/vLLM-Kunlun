@@ -213,8 +213,7 @@ Please use the following recommended versions to get started quickly:
 
 ## Contribute to vLLM Kunlun
 
-If you're interested in contributing to this project, please read [Contributing to vLLM Kunlun](CONTRIBUTING.md) to vLLM Kunlun.
-
+If you're interested in contributing to this project, please read [Contributing](CONTRIBUTING.md) to vLLM Kunlun.
 
 ## Star History 🔥
 
