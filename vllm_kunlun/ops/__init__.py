@@ -17,3 +17,5 @@
 
 import vllm_kunlun.ops.rotary_embedding
 import vllm_kunlun.ops.layernorm
+import vllm_kunlun.ops.quantization.awq
+import vllm_kunlun.ops.quantization.gptq
