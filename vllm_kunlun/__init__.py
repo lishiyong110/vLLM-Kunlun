@@ -1,4 +1,4 @@
-"""vllm kunlun init"""
+"""vllm kunlun init - with kunlun PyTorch compatibility patches"""
 
 import builtins
 import importlib
@@ -6,6 +6,17 @@ import logging
 import os
 import sys
 
+# ============================================================================
+# Apply early patches at module load time (before any vllm imports)
+# ============================================================================
+from .patches.apply_patches import apply_early_patches
+
+apply_early_patches()
+
+
+# ============================================================================
+# Import hook and module mappings
+# ============================================================================
 OLD_IMPORT_HOOK = builtins.__import__
 
 
@@ -42,14 +53,29 @@ def import_hook():
 
 
 def register():
-    """Register the Kunlun platform"""
+    """Register the Kunlun platform
 
+    This function is called by vllm's plugin system when the kunlun platform
+    is activated. It applies all necessary patches and initializations.
+    """
     logger = logging.getLogger("vllm_kunlun")
     logger.info("[KunlunPlugin] register() pid=%s", os.getpid())
+
+    # --- Apply kunlun PyTorch compatibility patches ---
+    # These patches modify vllm source files to fix compatibility issues
+    # with kunlun PyTorch 2.5.1. Must be done early in registration.
+    try:
+        from .patches.apply_patches import apply_all_patches
+
+        apply_all_patches()
+        logger.info("[KunlunPlugin] kunlun PyTorch compatibility patches applied")
+    except Exception as e:
+        logger.warning(f"[KunlunPlugin] Failed to apply patches: {e}")
 
     # --- load native extension to register torch.ops._C.weak_ref_tensor ---
     try:
         from . import _kunlun  # noqa: F401
+
         logger.info("[KunlunPlugin] _kunlun native extension loaded")
     except ImportError as e:
         logger.warning("[KunlunPlugin] Failed to load _kunlun: %s", e)
