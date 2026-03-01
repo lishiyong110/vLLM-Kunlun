@@ -20,17 +20,16 @@ Kunlun-optimized LayerNorm implementations using vLLM's CustomOp.register_oot me
 Design:
 - Uses @CustomOp.register_oot to register Kunlun-optimized RMSNorm/GemmaRMSNorm
 - These classes automatically replace the default implementations when instantiated
-- Since KunlunPlatform uses _enum=PlatformEnum.CUDA, dispatch_forward() selects
-  forward_cuda, so we implement forward_cuda (not forward_oot)
+- Since KunlunPlatform uses _enum=PlatformEnum.OOT, dispatch_forward() selects
+  forward_oot, so we implement forward_oot
 
 OOT Mechanism:
 - When code calls RMSNorm(...), vLLM's CustomOp.__new__ checks op_registry_oot
-- If "rms_norm" is found in OOT registry, it returns KunlunRMSNorm instance instead
+- If "RMSNorm" is found in OOT registry, it returns KunlunRMSNorm instance instead
 - This is the official vLLM way to replace operators without modifying source code
 """
 
 import logging
-import sys
 from typing import Optional, Union
 
 import torch
@@ -58,25 +57,23 @@ class KunlunRMSNorm(RMSNorm):
     vLLM's CustomOp registry. When code calls RMSNorm(...), vLLM's
     CustomOp.__new__ checks op_registry_oot and returns KunlunRMSNorm instance.
 
-    Since KunlunPlatform uses _enum=PlatformEnum.CUDA, dispatch_forward()
-    selects forward_cuda for execution.
+    Since KunlunPlatform uses _enum=PlatformEnum.OOT, dispatch_forward()
+    selects forward_oot for execution.
     """
 
     def __init__(self, *args, **kwargs):
         global _oot_rms_norm_init_logged
         super().__init__(*args, **kwargs)
         if not _oot_rms_norm_init_logged:
-            logger.error(
-                "[KunlunOOT] KunlunRMSNorm.__init__ called (OOT instantiation)"
-            )
+            logger.info("[KunlunOOT] KunlunRMSNorm.__init__ called (OOT instantiation)")
             _oot_rms_norm_init_logged = True
 
-    def forward_cuda(
+    def forward_oot(
         self,
         x: torch.Tensor,
         residual: Optional[torch.Tensor] = None,
     ) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
-        """Kunlun-optimized forward_cuda using Kunlun RMSNorm kernels."""
+        """Kunlun-optimized forward_oot using Kunlun RMSNorm kernels."""
         # Kunlun does not support non-contiguous input
         if not x.is_contiguous():
             x = x.contiguous()
@@ -120,7 +117,7 @@ class KunlunGemmaRMSNorm(GemmaRMSNorm):
         global _oot_gemma_rms_norm_init_logged
         super().__init__(*args, **kwargs)
         if not _oot_gemma_rms_norm_init_logged:
-            logger.error(
+            logger.info(
                 "[KunlunOOT] KunlunGemmaRMSNorm.__init__ called (OOT instantiation)"
             )
             _oot_gemma_rms_norm_init_logged = True
@@ -158,12 +155,12 @@ class KunlunGemmaRMSNorm(GemmaRMSNorm):
         )
         return out
 
-    def forward_cuda(
+    def forward_oot(
         self,
         x: torch.Tensor,
         residual: Optional[torch.Tensor] = None,
     ) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
-        """Kunlun-optimized forward_cuda for Gemma models."""
+        """Kunlun-optimized forward_oot for Gemma models."""
         if torch.compiler.is_compiling():
             self.forward_static = self.forward_xpu
             return self.forward_native(x, residual)
@@ -179,8 +176,6 @@ class KunlunGemmaRMSNorm(GemmaRMSNorm):
 # Log that OOT registration is complete
 # NOTE: OOT mechanism uses cls.__name__ (e.g. "RMSNorm") not the op's logical name
 # Use print to stderr to ensure visibility in logs
-print(
-    "[KunlunOOT] Registered KunlunRMSNorm and KunlunGemmaRMSNorm via CustomOp.register_oot",
-    file=sys.stderr,
-    flush=True,
+logger.info(
+    "[KunlunOOT] Registered KunlunRMSNorm and KunlunGemmaRMSNorm via CustomOp.register_oot"
 )

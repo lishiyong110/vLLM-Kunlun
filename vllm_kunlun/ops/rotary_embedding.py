@@ -20,8 +20,8 @@ Kunlun-optimized Rotary Embedding implementations using vLLM's CustomOp.register
 Design:
 - Uses @CustomOp.register_oot to register Kunlun-optimized RotaryEmbedding classes
 - These classes automatically replace the default implementations when instantiated
-- Since KunlunPlatform uses _enum=PlatformEnum.CUDA, dispatch_forward() selects
-  forward_cuda, so we implement forward_cuda (not forward_oot)
+- Since KunlunPlatform uses _enum=PlatformEnum.OOT, dispatch_forward() selects
+  forward_oot, so we implement forward_oot
 
 OOT Mechanism:
 - When code calls RotaryEmbedding(...), vLLM's CustomOp.__new__ checks op_registry_oot
@@ -30,11 +30,10 @@ OOT Mechanism:
 """
 
 import logging
-import os
-import sys
 from typing import Optional, Tuple
 
 import torch
+import xspeedgate_ops  # noqa
 from vllm.model_executor.custom_op import CustomOp
 from vllm.model_executor.layers.rotary_embedding import (
     DeepseekScalingRotaryEmbedding,
@@ -48,39 +47,6 @@ logger = logging.getLogger("vllm_kunlun.ops.rotary_embedding")
 _oot_rotary_init_logged = False
 _oot_mrotary_init_logged = False
 _oot_deepseek_rotary_init_logged = False
-
-
-# =============================================================================
-# Helper functions for Kunlun RoPE
-# =============================================================================
-
-
-def _kunlun_compute_cos_sin_cache(self) -> torch.Tensor:
-    """Compute the cos and sin cache for Kunlun."""
-    inv_freq = self._compute_inv_freq(self.base)
-    if hasattr(self, "scaling_factor"):
-        self.max_position_embeddings = int(
-            self.max_position_embeddings * self.scaling_factor
-        )
-    t = torch.arange(self.max_position_embeddings, dtype=torch.float)
-
-    freqs = torch.einsum("i,j -> ij", t, inv_freq)
-    cos = freqs.cos()
-    sin = freqs.sin()
-
-    # For glm4-9b-chat, rope runs forward_native, need cache in specific shape
-    # For qwen2.5-vl, rope runs mrope, also need cache in specific shape
-    if os.getenv("ROPE_NATIVE_2D") == "1":
-        cache = torch.cat((cos, sin), dim=-1)
-        return cache
-    if os.getenv("USE_ORI_ROPE") == "0":
-        cache_cos = torch.cat((cos, cos), dim=-1)
-        cache_sin = torch.cat((sin, sin), dim=-1)
-        # [2, self.max_position_embeddings, self.rotary_dim * 2]
-        cache = torch.stack((cache_cos, cache_sin), dim=0).unsqueeze(1)
-    else:
-        cache = torch.cat((cos, sin), dim=-1).unsqueeze(0).unsqueeze(1)
-    return cache
 
 
 # =============================================================================
@@ -102,19 +68,19 @@ class KunlunRotaryEmbedding(RotaryEmbedding):
         global _oot_rotary_init_logged
         super().__init__(*args, **kwargs)
         if not _oot_rotary_init_logged:
-            logger.error(
+            logger.info(
                 "[KunlunOOT] KunlunRotaryEmbedding.__init__ called (OOT instantiation)"
             )
             _oot_rotary_init_logged = True
 
-    def forward_cuda(
+    def forward_oot(
         self,
         positions: torch.Tensor,
         query: torch.Tensor,
         key: Optional[torch.Tensor] = None,
         offsets: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Kunlun-optimized forward_cuda using Kunlun RoPE kernels."""
+        """Kunlun-optimized forward_oot using Kunlun RoPE kernels."""
         from vllm_kunlun.ops._kunlun_ops import KunlunOps as ops
 
         if (
@@ -126,16 +92,27 @@ class KunlunRotaryEmbedding(RotaryEmbedding):
         # ops.rotary_embedding()/batched_rotary_embedding()
         # are in-place operations that update the query and key tensors.
         if offsets is not None:
-            ops.batched_rotary_embedding(
-                positions,
-                query,
-                key,
-                self.head_size,
-                self.cos_sin_cache,
-                self.is_neox_style,
-                self.rotary_dim,
-                offsets,
-            )
+            batched_rotary = getattr(ops, "batched_rotary_embedding", None)
+            if batched_rotary is not None:
+                batched_rotary(
+                    positions,
+                    query,
+                    key,
+                    self.head_size,
+                    self.cos_sin_cache,
+                    self.is_neox_style,
+                    self.rotary_dim,
+                    offsets,
+                )
+            else:
+                # Fallback to the base implementation when Kunlun does not
+                # provide a batched_rotary_embedding kernel.
+                return super().forward_native(
+                    positions,
+                    query,
+                    key,
+                    offsets=offsets,
+                )
         else:
             query, key = ops.rotary_embedding(
                 positions,
@@ -158,18 +135,18 @@ class KunlunMRotaryEmbedding(MRotaryEmbedding):
         global _oot_mrotary_init_logged
         super().__init__(*args, **kwargs)
         if not _oot_mrotary_init_logged:
-            logger.error(
+            logger.info(
                 "[KunlunOOT] KunlunMRotaryEmbedding.__init__ called (OOT instantiation)"
             )
             _oot_mrotary_init_logged = True
 
-    def forward_cuda(
+    def forward_oot(
         self,
         positions: torch.Tensor,
         query: torch.Tensor,
         key: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Kunlun-optimized forward_cuda for MRotaryEmbedding."""
+        """Kunlun-optimized forward_oot for MRotaryEmbedding."""
         assert positions.ndim == 2
         assert key is not None
 
@@ -200,19 +177,19 @@ class KunlunDeepseekScalingRotaryEmbedding(DeepseekScalingRotaryEmbedding):
         global _oot_deepseek_rotary_init_logged
         super().__init__(*args, **kwargs)
         if not _oot_deepseek_rotary_init_logged:
-            logger.error(
+            logger.info(
                 "[KunlunOOT] KunlunDeepseekScalingRotaryEmbedding.__init__ called (OOT instantiation)"
             )
             _oot_deepseek_rotary_init_logged = True
 
-    def forward_cuda(
+    def forward_oot(
         self,
         positions: torch.Tensor,
         query: torch.Tensor,
         key: Optional[torch.Tensor] = None,
         offsets: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Kunlun-optimized forward_cuda for DeepseekScalingRotaryEmbedding."""
+        """Kunlun-optimized forward_oot for DeepseekScalingRotaryEmbedding."""
         return torch.ops.xspeedgate_ops.flashinfer_rotary_embedding(
             positions=positions,
             rotary_dim=self.rotary_dim,
@@ -273,8 +250,7 @@ def Split_Norm_Rope(
 
 
 # Log that OOT registration is complete
-print(
-    "[KunlunOOT] Registered KunlunRotaryEmbedding, KunlunMRotaryEmbedding, KunlunDeepseekScalingRotaryEmbedding via CustomOp.register_oot",
-    file=sys.stderr,
-    flush=True,
+logger.info(
+    "[KunlunOOT] Registered KunlunRotaryEmbedding, KunlunMRotaryEmbedding, "
+    "KunlunDeepseekScalingRotaryEmbedding via CustomOp.register_oot"
 )

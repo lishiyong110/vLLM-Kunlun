@@ -20,8 +20,8 @@ Kunlun-optimized VocabParallelEmbedding using vLLM's CustomOp.register_oot mecha
 Design:
 - Uses @CustomOp.register_oot to register Kunlun-optimized VocabParallelEmbedding
 - This class automatically replaces the default implementation when instantiated
-- Since KunlunPlatform uses _enum=PlatformEnum.CUDA, dispatch_forward() selects
-  forward_cuda, so we implement forward_native (called by forward_cuda)
+- Since KunlunPlatform uses _enum=PlatformEnum.OOT, dispatch_forward() selects
+  forward_oot, so we implement forward_oot
 
 OOT Mechanism:
 - When code calls VocabParallelEmbedding(...), vLLM's CustomOp.__new__ checks op_registry_oot
@@ -30,7 +30,6 @@ OOT Mechanism:
 """
 
 import logging
-import sys
 
 import torch
 from vllm.distributed import tensor_model_parallel_all_reduce
@@ -99,13 +98,13 @@ class KunlunVocabParallelEmbedding(VocabParallelEmbedding):
         global _oot_vocab_embedding_init_logged
         super().__init__(*args, **kwargs)
         if not _oot_vocab_embedding_init_logged:
-            logger.error(
+            logger.info(
                 "[KunlunOOT] KunlunVocabParallelEmbedding.__init__ called (OOT instantiation)"
             )
             _oot_vocab_embedding_init_logged = True
 
-    def forward_native(self, input_):
-        """Kunlun-optimized forward_native implementation."""
+    def forward_oot(self, input_):
+        """Kunlun-optimized forward_oot implementation."""
         if self.tp_size > 1:
             # Build the mask using compiled function
             masked_input, input_mask = get_masked_input_and_mask(
@@ -132,8 +131,6 @@ class KunlunVocabParallelEmbedding(VocabParallelEmbedding):
 
 
 # Log that OOT registration is complete
-print(
-    "[KunlunOOT] Registered KunlunVocabParallelEmbedding via CustomOp.register_oot",
-    file=sys.stderr,
-    flush=True,
+logger.info(
+    "[KunlunOOT] Registered KunlunVocabParallelEmbedding via CustomOp.register_oot"
 )
